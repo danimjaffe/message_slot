@@ -20,17 +20,6 @@ https://www.youtube.com/watch?v=CWihl19mJig
 
 MODULE_LICENSE("GPL");
 
-typedef struct c_node {
-    struct c_node *next;
-    char msg_content[BUFFER_LEN];
-    int msg_len;
-    unsigned long id;
-} Channel;
-
-typedef struct c_list {
-    Channel *head;
-    Channel *tail;
-} List_of_Channels;
 static List_of_Channels *minors[256] = {NULL};
 
 Channel *search_Channel(unsigned int minor_num, unsigned int channel_id) {
@@ -74,6 +63,7 @@ Channel *add_to_Channel(unsigned int minor_number, unsigned int channel_id) {
     }
     return NULL;
 }
+
 
 static int dev_open(struct inode *inode, struct file *file) {
     List_of_Channels *new_channel_l;
