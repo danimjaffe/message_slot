@@ -118,68 +118,49 @@ static ssize_t device_read(struct file *file,
 }
 
 
-static ssize_t dev_write(struct file *file, const char __user* buffer,size_t length,loff_t* offset){
+static ssize_t device_write(struct file *file, const char __user* buffer,size_t length,loff_t* offset){
     int i;
-    Channel *channel_w;
+    Channel *channel;
     char cur_buffer[BUFFER_LEN];
-    unsigned int minor_number;
-    unsigned long channel_id;
-    printk("Invoking dev_write\n");
-    channel_id = (unsigned long)file->private_data;
-    if(channel_id == 0)
-    {
-        return -EINVAL;
-    }
-    if(length > BUFFER_LEN)
-    {
+    unsigned int minor;
+    unsigned long c_id;
+    printk("Invoking device_write\n");
+    if(length == 0 || length > BUFFER_LEN){ 
         return -EMSGSIZE;
     }
-    if(length == 0)
-    { 
-        return -EMSGSIZE;
-    }
-    minor_number = iminor(file->f_path.dentry->d_inode);
-    channel_w = channel_Lookup(minor_number, channel_id);
-    // if not exist
-    if(!channel_w)
-    { 
+    c_id = (unsigned long)file->private_data;
+    if(c_id == 0){
         return -EINVAL;
     }
-    for(i = 0; i < length ;i++)
-    {
-        // if not valid
-        if(get_user(cur_buffer[i],&buffer[i])!=0)
-        {
+    minor = iminor(file->f_path.dentry->d_inode);
+    channel = channel_Lookup(minor, c_id);
+    if(!channel){ 
+        return -EINVAL;
+    }
+    for(i = 0; i < length ;i++){
+        if(get_user(cur_buffer[i],&buffer[i])!=0){
             return -EINVAL;
         }
     }
-    // update only if valid
-    for(i = 0; i < length ; i++)
-    {
-        channel_w->msg_content[i]= cur_buffer[i]; 
+    for(i = 0; i < length ; i++){
+        channel->msg_content[i]= cur_buffer[i]; 
     }
-    channel_w->msg_len = length; //updated the length
-
-    return length; // if success return the written msg length
+    channel->msg_len = length;
+    return length;
 }
 
-static long dev_ioctl(struct file *file, unsigned int ioctl_command_id, unsigned long ioctl_param) {
-    Channel* ioctl_c;
-    Channel* new_c;
-    unsigned int minor_number;
-    printk("Invoking dev_ioctl\n");
-    if((ioctl_param == 0)||(MSG_SLOT_CHANNEL != ioctl_command_id)) 
-    {
+static long device_ioctl(struct file *file, unsigned int ioctl_command_id, unsigned long ioctl_param) {
+    Channel* ioctl_channel, *new_channel;
+    unsigned int minor;
+    printk("Invoking device_ioctl\n");
+    if(MSG_SLOT_CHANNEL != ioctl_command_id || ioctl_param == 0) {
         return -EINVAL;
     }
-    minor_number = iminor(file->f_path.dentry->d_inode);
-    ioctl_c = channel_Lookup(minor_number, ioctl_param);
-    // if first time
-    if(!ioctl_c)
-    {
-        new_c = add_new_Channel(minor_number,ioctl_param);
-        if(!new_c)
-        {
+    minor = iminor(file->f_path.dentry->d_inode);
+    ioctl_channel = channel_Lookup(minor, ioctl_param);
+    if(!ioctl_channel){
+        new_channel = add_new_Channel(minor,ioctl_param);
+        if(!new_channel){
             return -ENOSPC;
         }
     }
@@ -187,54 +168,50 @@ static long dev_ioctl(struct file *file, unsigned int ioctl_command_id, unsigned
     return 0;
 }
 
-// The functions that will be called
+
+//==================== DEVICE SETUP =============================
 struct file_operations fops =
         {
             .owner          = THIS_MODULE,
             .read           = device_read,
-            .write          = dev_write,
+            .write          = device_write,
             .open           = device_open,
-            .unlocked_ioctl = dev_ioctl
+            .unlocked_ioctl = device_ioctl
         };
 
-// load the module to the kernel
+// Init module and register the device similar to ex6 example
 static int __init simple_init(void) 
 {
-    // Register the character device 
-    if (register_chrdev(MAJOR_NUM, DEVICE_NAME, &fops) >= 0) 
-    {
-        printk("Registeration success\nPlease create a device file:\n");
-        printk("mknod /dev/FILE_NAME c %d MINOR_NUMBER\n", MAJOR_NUM);
-        return 0;
+    int rc;
+    rc = register_chrdev(MAJOR_NUM, DEVICE_NAME, &fops);
+    if (rc<0){
+        printk(KERN_ALERT "Failed registraion: %d\n", MAJOR_NUM );
+        return rc;
     }
-    else
-    {
-        printk(KERN_ALERT "Registraion failed: %d\n", MAJOR_NUM );
-        return -1;
-    }
+    printk("The Registeration was successful\n");
+    printk("In order to create a device file write:\n");
+    printk("mknod /dev/FILE_NAME c %d MINOR_NUMBER\n", MAJOR_NUM);
+    return 0;
 }
 
-// unload the module to the kernel
+// unload the module and unregister the device
 static void __exit simple_cleanup(void) {
     int i;
     unregister_chrdev(MAJOR_NUM, DEVICE_NAME);
-    printk("Remove device: %d\n", MAJOR_NUM);
-    for(i=0 ; i<= 255 ;i++)
-    {
-        if(minors[i]!= NULL)
-        { 
-            Channel* free_c = minors[i]->head;
-            while(free_c!= NULL)
-            {
-                Channel* next_c = free_c->next;
-                kfree(free_c);
-                free_c = next_c;
+    for(i=0 ; i<= 255 ;i++){
+        if(minors[i]!= NULL){ 
+            Channel* channel = minors[i]->head;
+            while(channel!= NULL){
+                Channel* next_channel = channel->next;
+                kfree(channel);
+                channel = next_channel;
             }
             kfree(minors[i]);
         }
     }
+    printk("Device %d is removed\n", MAJOR_NUM);
 }
-// register the two above-mentioned functions
+
 module_init(simple_init);
 module_exit(simple_cleanup);
 
