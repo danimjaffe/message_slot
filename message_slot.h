@@ -4,10 +4,10 @@
 #define MAJOR_NUM 235
 #define BUFFER_LEN 128
 #define MSG_SLOT_CHANNEL _IOW(MAJOR_NUM, 0, unsigned long)
-#define DEVICE_NAME "char_device"
+#define DEVICE_NAME "device"
 
-typedef struct c_node {
-    struct c_node *next;
+typedef struct node {
+    struct node *next;
     char msg_content[BUFFER_LEN];
     int msg_len;
     unsigned long id;
@@ -16,6 +16,6 @@ typedef struct c_node {
 typedef struct c_list {
     Channel *head;
     Channel *tail;
-} List_of_Channels;
+} Channel_List;
 
 #endif 
